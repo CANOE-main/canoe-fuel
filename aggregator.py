@@ -82,8 +82,8 @@ def run() -> None:
         dict_id=dict_id,
         factors=factors,
         fuel_df=fuel_df.rename(columns={'Fuel_type': 'Commodity', 'Fuel_name': 'notes'}).assign(source='[F1]'),
+        cfg=cfg,   # <— NEW: pass through your YAML so BIO uses cfg['b_price']
     )
-
     # Emissions
     comb_dict = build_emission_activity(
         comb_dict,

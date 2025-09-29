@@ -50,7 +50,19 @@ def build_comm_and_tech(
     for code in fuel_list:
         flag = 's' if code == 'F_ethos' else 'p'
         com_rows.append([code, flag, generate_description(code), dict_id['CAN']])
-
+        
+    emis_list = ['co2', 'ch4', 'n2o', 'CO2eq']
+    for emis in emis_list:
+        flag = 'e'
+        if emis == 'co2':
+            desc = 'carbon dioxide emissions'
+        if emis == 'ch4':
+            desc = 'methane emissions'
+        if emis == 'n2o':
+            desc = 'nitrous oxide emissions'
+        if emis == 'CO2eq':
+            desc = 'carbon dioxide equivalent emissions'
+        com_rows.append([emis, flag, desc, dict_id['CAN']])
     # Identify general F_<fuel> codes actually used (skip elc/elc_dx)
     used_fuels = set()
     for code in fuel_list:
@@ -85,8 +97,11 @@ def build_comm_and_tech(
 
     fuel_flow_list: List[str] = []
     for code, _, _, _ in com_rows:
+        if code in emis_list:
+            continue
         original = code.lower()
-        if original in {'e_elc_dx', 'e_elc', 'f_ethos'}:
+        if original in {'e_elc_dx', 'e_elc', 'f_ethos'
+                        }:
             continue
         parts = original.split('_')
         prefix = parts[0].upper()
