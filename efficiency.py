@@ -7,7 +7,7 @@ Created on Wed Aug 20 10:08:08 2025
 """Generate Efficiency rows from technology naming rules (unit efficiency)."""
 from typing import Dict, List
 import pandas as pd
-
+import numpy as np
 
 def build_mapping(tech_list: List[str]) -> Dict[str, Dict[str, str]]:
     """Create input/output commodity mapping using name conventions."""
@@ -45,8 +45,17 @@ def add_efficiency(
             for tech in tech_list:
                 i = mapping.get(tech, {}).get('input', '')
                 o = mapping.get(tech, {}).get('output', '')
-                rows.append([pro, i, tech, vint, o, 1.0, "Arbitrary value for transfer technology", '', '', '', '', '', '', dict_id[pro]])
+                rows.append([pro, i, tech, vint, o, 1.0, "Arbitrary value for transfer technology", np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, dict_id[pro]])
     eff_df = pd.DataFrame(rows, columns=comb_dict['Efficiency'].columns)
     if not eff_df.empty:
         comb_dict['Efficiency'] = pd.concat([comb_dict['Efficiency'], eff_df], ignore_index=True)
+    rows = []
+    for pro in province_list:
+        if pro == 'CAN':
+            continue
+        for tech in tech_list:
+            rows.append([pro, tech, 5, 'An arbitrary lifetime so that it is renewed as often as it is needed', np.nan,np.nan,np.nan,np.nan,np.nan,np.nan, dict_id[pro]])
+    life_df = pd.DataFrame(rows, columns=comb_dict['LifetimeTech'].columns) 
+    if not eff_df.empty:
+        comb_dict['LifetimeTech'] = pd.concat([comb_dict['LifetimeTech'], life_df], ignore_index=True)
     return comb_dict

@@ -172,10 +172,6 @@ def build_costvariable(
             continue
 
         for vint in periods:
-            for per in periods:
-                if per < vint:
-                    continue
-
                 for tech in tech_list:
                     # Skip imports/ELC/OTH if those are not meant to be priced here
                     if any(x in tech for x in ['F_IMP', 'ELC', 'OTH']):
@@ -188,7 +184,7 @@ def build_costvariable(
                     val = _calc_value(
                         tech,
                         tech_name,
-                        int(per),
+                        int(vint),
                         cost_df=cdf,
                         cfg=cfg,
                         mmbtuconvertor=factors['mmbtuconvertor'],
@@ -215,7 +211,7 @@ def build_costvariable(
                     dq_cred, dq_geo, dq_str, dq_tech, dq_time = 2, 3, 2, 1, 1
 
                     rows.append([
-                        pro, int(per), tech, int(vint), float(val), unit,
+                        pro, int(vint), tech, int(vint), float(val), unit,
                         notes, ref, dq_cred, dq_geo, dq_str, dq_tech, dq_time,
                         dict_id[pro],
                     ])
