@@ -6,11 +6,32 @@ Builds the CostVariable table for CANOE.
 """
 from typing import Dict, List
 import pandas as pd
-
+import numpy as np
+import ast
+from collections.abc import Sequence
 
 # ------------------------------
 # Internal helpers
 # ------------------------------
+def _to_scalar(x):
+    """Return a clean scalar string/number from list-like or JSON-string cells."""
+    if pd.isna(x):
+        return np.nan
+    # If it's a JSON-looking string like '["foo"]' or "['foo']"
+    if isinstance(x, str) and x.strip().startswith('[') and x.strip().endswith(']'):
+        try:
+            parsed = ast.literal_eval(x.strip())
+            if isinstance(parsed, Sequence) and not isinstance(parsed, (str, bytes)):
+                return parsed[0] if len(parsed) else np.nan
+        except Exception:
+            # fall through to bracket-strip as a last resort
+            s = x.strip()[1:-1].strip()
+            return s.strip("'").strip('"') or np.nan
+    # If it's a real list/tuple/ndarray/Series, take the first element
+    if isinstance(x, Sequence) and not isinstance(x, (str, bytes)):
+        return x[0] if len(x) else np.nan
+    return x
+
 def _safe_base_from_cost(cost_df: pd.DataFrame, period_val: int, tech_name: str, *, warn_label: str) -> float:
     """Safely pull a base price from cost_df for (period, Tech Name).
     Prints a lightweight warning if the lookup fails.
@@ -202,10 +223,10 @@ def build_costvariable(
                     match = fuel_df.loc[fuel_df['Commodity'] == tech_name]
                     if not match.empty:
                         # guard for non-standard shapes
-                        notes = match['notes'].iloc[0] if 'notes' in match else ''
-                        ref = match['source'].iloc[0] if 'source' in match else ''
+                            notes = _to_scalar(match['notes'].iloc[0]) if 'notes' in match else np.nan
+                            ref   = _to_scalar(match['source'].iloc[0]) if 'source' in match else np.nan
                     else:
-                        notes, ref = '', ''
+                        notes, ref =np.nan, np.nan
 
                     # Data Quality default scores (tunable)
                     dq_cred, dq_geo, dq_str, dq_tech, dq_time = 2, 3, 2, 1, 1

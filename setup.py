@@ -128,7 +128,7 @@ def build_runtime_frames(df_raw: pd.DataFrame, config: dict) -> Tuple[pd.DataFra
     fuel_list = fuel_df['Commodity'].to_list()
 
     province_list = ['AB', 'ON', 'BC', 'MB', 'SK', 'QC', 'NLLAB','NS', 'NB', 'PEI', 'CAN']
-    dict_id = {pro: (f"DISTHR{pro}{config['version']}" if pro != 'CAN' else f"DISTHR{config['version']}") for pro in province_list}
+    dict_id = {pro: (f"FUELHR{pro}{config['version']}" if pro != 'CAN' else f"FUELHR{config['version']}") for pro in province_list}
 
     return cost_df, fuel_df, fuel_list, province_list, config['periods'], dict_id
 

@@ -13,7 +13,7 @@ Fixes in this version:
 """
 from typing import Dict, List, Tuple
 import pandas as pd
-
+import numpy as np
 
 def _sectors_map() -> Dict[str, str]:
     return {
@@ -43,15 +43,17 @@ def build_comm_and_tech(
             fuel = fuels[code]
         else:
             key = '_'.join(parts[1:]) if len(parts) > 1 else parts[0]
-            fuel = 'electricity' if key.upper() == 'ELC' else ('electricity (direct use)' if key.upper() == 'ELC_DX' else fuels.get(key, key))
+            fuel = 'electricity' if key.upper() == 'ELC' else ('electricity (direct use)' if key.upper() == 'ELC_DEM' else fuels.get(key, key))
         return f"{fuel.capitalize()} for the {sector.lower()}"
 
     com_rows = []
     for code in fuel_list:
-        flag = 's' if code == 'F_ethos' else 'p'
+        flag = 's' if code == 'F_ethos' else 'a'
+        if 'elc' in code.lower():
+            flag = 'p'
         com_rows.append([code, flag, generate_description(code), dict_id['CAN']])
         
-    emis_list = ['co2', 'ch4', 'n2o', 'CO2eq']
+    emis_list = ['co2', 'ch4', 'n2o', 'co2e']
     for emis in emis_list:
         flag = 'e'
         if emis == 'co2':
@@ -60,7 +62,7 @@ def build_comm_and_tech(
             desc = 'methane emissions'
         if emis == 'n2o':
             desc = 'nitrous oxide emissions'
-        if emis == 'CO2eq':
+        if emis == 'co2e':
             desc = 'carbon dioxide equivalent emissions'
         com_rows.append([emis, flag, desc, dict_id['CAN']])
     # Identify general F_<fuel> codes actually used (skip elc/elc_dx)
@@ -68,7 +70,7 @@ def build_comm_and_tech(
     for code in fuel_list:
         parts = code.split('_')
         fuel_key = '_'.join(parts[1:]) if len(parts) > 1 else parts[0]
-        if fuel_key.upper() not in {"ELC", "ELC_DX"} and fuel_key in fuels:
+        if fuel_key.upper() not in {"ELC", "ELC_DEM"} and fuel_key in fuels:
             used_fuels.add(fuel_key)
 
     for fuel_code in sorted(used_fuels):
@@ -100,7 +102,7 @@ def build_comm_and_tech(
         if code in emis_list:
             continue
         original = code.lower()
-        if original in {'e_elc_dx', 'e_elc', 'f_ethos'
+        if original in {'e_elc_dem', 'e_elc', 'f_ethos'
                         }:
             continue
         parts = original.split('_')
@@ -132,7 +134,10 @@ def build_comm_and_tech(
         else:
             sector = 'fuel'
         desc = generate_fuel_flow_description(code)
-        tech_rows.append([code, flag, sector, '', '', 1, 0, 0, 0, 0, 0, 0, 0, desc, dict_id['CAN']])
+        if code.startswith('E_'):
+            tech_rows.append([code, flag, sector, np.nan, np.nan, 1, 0, 0, 0, 0, 0, 0, 0, desc, dict_id['CAN']])
+        else:
+            tech_rows.append([code, flag, sector, np.nan, np.nan, 1, 1, 0, 0, 0, 0, 0, 0, desc, dict_id['CAN']])
 
     # Write out
     comm_df = pd.DataFrame(com_rows, columns=comb_dict['Commodity'].columns).drop_duplicates(subset=['name'])

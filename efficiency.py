@@ -19,7 +19,7 @@ def build_mapping(tech_list: List[str]) -> Dict[str, Dict[str, str]]:
             mapping[tech] = {"input": "F_ethos", "output": f"F_{fuel}"}
         elif tech.startswith("E_"):
             sector = parts[1].upper()
-            mapping[tech] = {"input": "E_elc_dx", "output": f"{sector}_elc"}
+            mapping[tech] = {"input": "E_elc_dem", "output": f"{sector}_elc"}
         elif tech.startswith("F_"):
             sector = parts[1].upper()
             fuel = "_".join(parts[2:]).lower()
