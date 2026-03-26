@@ -1,7 +1,7 @@
 # Fuel Aggregator — Quick Start & README
 
 This README explains **what to edit in `params.yaml`** and **how to run** the `aggregator.py` orchestrator from the command line.
-For an overview of the technolgies and commodities for the fuel sector please go to [Fuel Sector](fuel.md) for information of the processing and data pipeline,[visit here]( https://canoe-main.github.io/canoe-fuel/)
+For an overview of the technolgies and commodities for the fuel sector please go to [Fuel Sector](fuel.md) for information of the processing and data pipeline, [visit here]( https://canoe-main.github.io/canoe-fuel/)
 ---
 
 ## 1) What this repo does (at a glance)
