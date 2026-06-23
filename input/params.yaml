@@ -2,7 +2,7 @@
 eia_year: 2025 #Check the EIA website and find the most reason year in the database, that is the value to use
 
 #Version control: What version of the data are we using, we track numerically and they can be found in DataSet table
-version: '001' #Place within the quotation marks
+version: '002' #Place within the quotation marks
 
 #Choose the schema version you wish to use; the lower the number, the more simple the representation. Default is 3_1
 schema_version:
@@ -20,7 +20,6 @@ periods:
     - 2035
     - 2040
     - 2045
-    - 2050
 
 #Price for uranium, look in the latest NREL ATB electricity report and find the Fuel cost in $/MMBtu
 u_price: 1.09 

@@ -54,7 +54,7 @@ def init_database(config: dict, output_dir: str | Path = "output", db_name: str 
 
     # Read schema
     version = config['schema_version'][0]
-    schema_file = Path("input") / (f"schema_{version}.sql" if version != 31 else "schema_3_1.sql")
+    schema_file = Path("input") / "canoe_dataset_schema.sql"
     schema_sql = schema_file.read_text(encoding="utf-8")
 
     # Recreate DB
@@ -96,7 +96,12 @@ def build_runtime_frames(df_raw: pd.DataFrame, config: dict) -> Tuple[pd.DataFra
     # Keep specific unit/years and remove 'average' rows (matches your original)
     df = df[df['unit'] == '2024 $/MMBtu']
     periods = list(map(str, config['periods']))
-    df = df[df['period'].isin(periods)]
+    # Period-end perspective: each model period (e.g. 2025) uses price data from
+    # the following period (e.g. 2030).  Retain those end-of-period years in cost_df.
+    sorted_periods = sorted(config['periods'])
+    period_step = sorted_periods[1] - sorted_periods[0] if len(sorted_periods) > 1 else 5
+    end_periods = list(map(str, [p + period_step for p in sorted_periods]))
+    df = df[df['period'].isin(end_periods)]
     df = df[~df['seriesName'].str.contains('average', case=False)]
 
     sector_mapping = {
@@ -121,8 +126,9 @@ def build_runtime_frames(df_raw: pd.DataFrame, config: dict) -> Tuple[pd.DataFra
 
     df = df.dropna()
     cost_df = df[['period', 'sector_code', 'fuel_code', 'Tech Name', 'value', 'unit']].copy()
-    cost_df = cost_df.sort_values(by='period', ascending=True).reset_index(drop=True)
-
+    cost_df = cost_df.sort_values(by='period', ascending=True).reset_index(drop=True)    # Store the period-end mapping on the DataFrame for downstream consumers.
+    # Keys are model periods (int); values are the EIA year whose price is used.
+    cost_df.attrs['period_end_map'] = {p: p + period_step for p in sorted_periods}
     # Fuel list from CSV
     fuel_df = pd.read_csv('input/fuel_list.csv')
     fuel_list = fuel_df['Commodity'].to_list()

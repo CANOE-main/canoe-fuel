@@ -180,6 +180,9 @@ def build_costvariable(
     cdf['period'] = cdf['period'].astype(int)
     cdf['Tech Name'] = cdf['Tech Name'].astype(str)
     cdf['value'] = cdf['value'].astype(float)
+    # Period-end mapping: model_period → EIA year whose price is used.
+    # Falls back to the model period itself if the attribute is absent.
+    period_end_map: dict = cost_df.attrs.get('period_end_map', {})
 
     # Ensure required metadata columns exist on fuel_df
     fuel_df = fuel_df.loc[:, ~fuel_df.columns.duplicated()].copy()
@@ -201,11 +204,15 @@ def build_costvariable(
                     # Map to the "Tech Name" used in cost_df
                     tech_name = mapping[tech]['output'].strip()
 
+                    # Period-end perspective: look up price from the end of the
+                    # period (e.g. 2030 data for the 2025 model period).
+                    price_year = period_end_map.get(int(vint), int(vint))
+
                     # Compute value with all conversions/deflators applied
                     val = _calc_value(
                         tech,
                         tech_name,
-                        int(vint),
+                        price_year,
                         cost_df=cdf,
                         cfg=cfg,
                         mmbtuconvertor=factors['mmbtuconvertor'],
