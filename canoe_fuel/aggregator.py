@@ -4,20 +4,20 @@ Created on Mon Aug 25 07:38:47 2025
 
 @author: david
 """
-"""End‑to‑end orchestrator for the fuel pipeline."""
+"""End-to-end orchestrator for the fuel pipeline."""
 from pathlib import Path
 import logging
 import sqlite3
 import os
 import pandas as pd
 
-from setup import load_config, init_database, build_runtime_frames, inflation_constants
-from eia_api import load_cached, fetch_and_cache
-from techcom import build_comm_and_tech
-from efficiency import build_mapping, add_efficiency
-from costvariable import build_costvariable
-from emissionactivity import build_emission_activity
-from postprocessing import add_metadata
+from canoe_fuel.setup import load_config, init_database, build_runtime_frames, inflation_constants
+from canoe_fuel.eia_api import load_cached, fetch_and_cache
+from canoe_fuel.techcom import build_comm_and_tech
+from canoe_fuel.efficiency import build_mapping, add_efficiency
+from canoe_fuel.costvariable import build_costvariable
+from canoe_fuel.emissionactivity import build_emission_activity
+from canoe_fuel.postprocessing import add_metadata
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
