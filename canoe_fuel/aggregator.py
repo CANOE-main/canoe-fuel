@@ -1,18 +1,14 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Aug 25 07:38:47 2025
-
-@author: david
-"""
 """End-to-end orchestrator for the fuel pipeline."""
-from pathlib import Path
+from __future__ import annotations
+
 import logging
 import sqlite3
-import os
-import pandas as pd
+from pathlib import Path
 
-from canoe_fuel.setup import load_config, init_database, build_runtime_frames, inflation_constants
+from canoe_fuel.common import CANOEFuelConfig
 from canoe_fuel.eia_api import load_cached, fetch_and_cache
+from canoe_fuel.setup import load_fuel_list, build_cost_frame
+from canoe_fuel.validation import validate_db_against_config
 from canoe_fuel.techcom import build_comm_and_tech
 from canoe_fuel.efficiency import build_mapping, add_efficiency
 from canoe_fuel.costvariable import build_costvariable
@@ -20,85 +16,53 @@ from canoe_fuel.emissionactivity import build_emission_activity
 from canoe_fuel.postprocessing import add_metadata
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
-
-def _write_all(db_path: Path, comb_dict: dict) -> None:
-    def _to_scalar(x):
-        # Collapse weird pandas objects to simple scalars/strings
-        import pandas as pd
-        if isinstance(x, pd.Series):
-            return x.iloc[0] if len(x) else None
-        if isinstance(x, pd.DataFrame):
-            return x.iloc[0, 0] if not x.empty else None
-        if isinstance(x, (list, tuple, dict)):
-            return str(x)
-        return x
-
-    with sqlite3.connect(db_path) as conn:
-        for table, df in comb_dict.items():
-            if isinstance(df, pd.DataFrame) and not df.empty:
-                safe_df = df.applymap(_to_scalar)
-                logging.info("Writing %-24s %6d rows", table, len(safe_df))
-                safe_df.to_sql(table, conn, if_exists='append', index=False)
+logger = logging.getLogger(__name__)
 
 
 def run() -> None:
-    cfg = load_config()
-    db_path, tables, comb_dict = init_database(cfg)
+    cfg = CANOEFuelConfig.validate_from_yaml()
+    db_path = Path(cfg.db_dir)
 
-    # Source (EIA)
-    cache_path = Path('cache/dataframes.pkl')
-    try:
-        df_raw = load_cached(cache_path)
-        logging.info("Loaded EIA cache: %d rows", len(df_raw))
-    except FileNotFoundError:
-        api_key = ''#Add Your api key here
-        df_raw = fetch_and_cache(int(cfg['eia_year']), api_key, cache_path)
-        logging.info("Fetched & cached EIA: %d rows", len(df_raw))
+    with sqlite3.connect(db_path) as conn:
+        validate_db_against_config(cfg, conn)
 
-    # Build runtime frames
-    cost_df, fuel_df, fuel_list, province_list, periods, dict_id = build_runtime_frames(df_raw, cfg)
+        # Acquire EIA data (from cache or API)
+        cache_path = Path("cache/dataframes.pkl")
+        try:
+            df_raw = load_cached(cache_path)
+            logger.info("Loaded EIA cache: %d rows", len(df_raw))
+        except FileNotFoundError:
+            api_key = ""  # set via environment or secrets management
+            df_raw = fetch_and_cache(cfg.eia_year, api_key, cache_path)
+            logger.info("Fetched & cached EIA: %d rows", len(df_raw))
 
-    # Dimensions
-    comb_dict, tech_list = build_comm_and_tech(
-        comb_dict, cost_df=cost_df, fuel_df=fuel_df, fuel_list=fuel_list, dict_id=dict_id
-    )
+        # Build runtime frames
+        fuel_df = load_fuel_list()
+        fuel_list = fuel_df["Commodity"].tolist()
+        cost_df = build_cost_frame(df_raw, cfg)
 
-    # Efficiency (unit) and mapping
-    comb_dict = add_efficiency(
-        comb_dict, province_list=province_list, periods=periods, dict_id=dict_id, tech_list=tech_list
-    )
-    mapping = build_mapping(tech_list)
+        # Dimensions: Commodity and Technology
+        tech_list = build_comm_and_tech(conn, fuel_df=fuel_df, fuel_list=fuel_list, cfg=cfg)
+        logger.info("Wrote Commodity and Technology (%d techs)", len(tech_list))
 
-    # Costs
-    factors = inflation_constants()
-    comb_dict = build_costvariable(
-        comb_dict,
-        cost_df=cost_df,
-        tech_list=tech_list,
-        mapping=mapping,
-        province_list=province_list,
-        periods=periods,
-        dict_id=dict_id,
-        factors=factors,
-        fuel_df=fuel_df.rename(columns={'Fuel_type': 'Commodity', 'Fuel_name': 'notes'}).assign(source='[F1]'),
-        cfg=cfg,   # <— NEW: pass through your YAML so BIO uses cfg['b_price']
-    )
-    # Emissions
-    comb_dict = build_emission_activity(
-        comb_dict,
-        province_list=province_list,
-        periods=periods,
-        dict_id=dict_id,
-        mapping=mapping,
-    )
+        # Efficiency (unit) and LifetimeTech
+        mapping = build_mapping(tech_list)
+        add_efficiency(conn, tech_list=tech_list, mapping=mapping, cfg=cfg)
+        logger.info("Wrote Efficiency and LifetimeTech")
 
-    # Metadata
-    comb_dict = add_metadata(comb_dict, config=cfg, dict_id=dict_id, province_list=province_list)
+        # CostVariable
+        build_costvariable(conn, cost_df=cost_df, tech_list=tech_list, mapping=mapping, fuel_df=fuel_df, cfg=cfg)
+        logger.info("Wrote CostVariable")
 
-    # Persist
-    _write_all(db_path, comb_dict)
-    logging.info("Done. SQLite written to: %s", db_path)
+        # EmissionActivity
+        build_emission_activity(conn, mapping=mapping, cfg=cfg)
+        logger.info("Wrote EmissionActivity")
+
+        # Metadata: DataSet, DataSource, SectorLabel
+        add_metadata(conn, cfg=cfg)
+        logger.info("Wrote DataSet, DataSource, SectorLabel")
+
+    logger.info("Done. SQLite: %s", cfg.db_dir)
 
 
 if __name__ == "__main__":

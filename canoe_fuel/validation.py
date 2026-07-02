@@ -1,4 +1,4 @@
-"""Pre-write validation: check that canoe-base DB is consistent with config."""
+"""Pre-write validation: check that the canoe-base DB is consistent with config."""
 from __future__ import annotations
 
 import logging
@@ -6,15 +6,13 @@ import sqlite3
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from common import CANOEFuelConfig
+    from canoe_fuel.common import CANOEFuelConfig
 
 logger = logging.getLogger(__name__)
 
 
 def check_missing_periods(conn: sqlite3.Connection, future_periods: list[int]) -> list[int]:
-    cur = conn.execute(
-        "SELECT period FROM time_period WHERE flag = 'f'",
-    )
+    cur = conn.execute("SELECT period FROM time_period WHERE flag = 'f'")
     present = {row[0] for row in cur.fetchall()}
     return [p for p in future_periods if p not in present]
 

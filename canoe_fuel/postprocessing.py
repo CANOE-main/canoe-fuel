@@ -1,54 +1,58 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Aug 20 14:02:44 2025
+"""Write DataSet, DataSource, and SectorLabel rows for the fuel pipeline."""
+from __future__ import annotations
 
-@author: david
-"""
+import sqlite3
+from typing import TYPE_CHECKING
 
-"""Append DataSet, DataSource, and SectorLabel tables (fuel pipeline)."""
-from typing import Dict, List
-import pandas as pd
-import numpy as np
+from canoe_schema.v4_0.models import DataSet, DataSource, SectorLabel
 
-def add_metadata(
-    comb_dict: Dict[str, pd.DataFrame],
-    *,
-    config: dict,
-    dict_id: Dict[str, str],
-    province_list: List[str],
-) -> Dict[str, pd.DataFrame]:
-    """Populate DataSet/DataSource/SectorLabel; returns updated registry."""
-    # DataSet
-    ds_rows = []
-    for pro in province_list:
-        ds_rows.append([dict_id[pro], f'{pro} - fuel ', f"v{config['version']}", '2025 annual update', 'active',
-                        'David Turnbull - david.turnbull1@ucalgary.ca', '2025-08-01', np.nan, 'Original sector design', np.nan])
-    ds_df = pd.DataFrame(ds_rows, columns=comb_dict['DataSet'].columns)
-    comb_dict['DataSet'] = pd.concat([comb_dict['DataSet'], ds_df], ignore_index=True)
+if TYPE_CHECKING:
+    from canoe_fuel.common import CANOEFuelConfig
 
-    # DataSource (kept from your original list)
-    src_rows = [
-        ['F1','EIA AEO 2025','Using table 3 via the API to get access to the costs of the different fuels for different sectors',dict_id['CAN']],
-        ['F2','NREL ATB electricity sector 2022','Taking the fuel costs from the appropriate places in the excel workbook',dict_id['CAN']],
-        ['F3', 'Biofuels in Canada 2023', 'Michael Wolinetz & Sam Harrison. (2023). Biofuels in Canada 2023: Tracking biofuel consumption, feedstocks and avoided greenhouse gas emissions. Navius Research.', dict_id['CAN']],
-        ['F4','Government of Canada, Emission factors and reference values','The appropriate emission factors for sector and fuel are converted to tonnes or ktonnes per PJ',dict_id['CAN']],
-        ['F5', 'IPCC AR6', 'Used for the GWP100 values for methane, carbon dioxide and nitrous oxide for calculating CO2eq', dict_id['CAN']],
-        ['F6', 'NS Dept. of Environment & Climate Change', 'QRV standards (wood/ethanol/biodiesel factors)', dict_id['CAN']],
-        ['F7', 'Argonne National Laboratory, GREET model', 'Upstream fuel emissions factors', dict_id['CAN']],
+
+def add_metadata(conn: sqlite3.Connection, *, cfg: "CANOEFuelConfig") -> None:
+    """Write DataSet, DataSource, and SectorLabel rows."""
+    cur = conn.cursor()
+
+    # DataSet — one row per province (including CAN for the shared national dataset)
+    ds_rows = [
+        DataSet(
+            data_id=cfg.data_id(pro),
+            label=f"{pro} - fuel",
+            version=f"v{cfg.version}",
+            description="2025 annual update",
+            status="active",
+            author="David Turnbull - david.turnbull1@ucalgary.ca",
+            date="2025-08-01",
+            changelog="Original sector design",
+        )
+        for pro in cfg.province_list
     ]
-    src_df = pd.DataFrame(src_rows, columns=comb_dict['DataSource'].columns)
-    comb_dict['DataSource'] = pd.concat([comb_dict['DataSource'], src_df], ignore_index=True)
+    cur.executemany(*DataSet.bulk_insert_or_ignore_sql(ds_rows))
 
-    # SectorLabel (fixed bug: assign columns on the DataFrame, not the name 'sec')
-    sectors = {
-        "electricity": "Electric power sector",
-        "residential": "Residential sector",
-        "commercial": "Commercial sector",
-        "industrial": "Industrial sector",
-        "transportation": "Transportation sector",
-        "agriculture": "Agriculture sector",
-        "fuel": "Fuel production sector",
-    }
-    sec_df = pd.DataFrame([[k, v] for k, v in sectors.items()], columns=comb_dict['SectorLabel'].columns)
-    comb_dict['SectorLabel'] = pd.concat([comb_dict['SectorLabel'], sec_df], ignore_index=True)
-    return comb_dict
+    # DataSource — source registry for the fuel module (INSERT OR IGNORE)
+    can_data_id = cfg.data_id("CAN")
+    src_rows = [
+        DataSource(source_id="F1", source="EIA AEO 2025", notes="Using table 3 via the API to get access to the costs of the different fuels for different sectors", data_id=can_data_id),
+        DataSource(source_id="F2", source="NREL ATB electricity sector 2022", notes="Taking the fuel costs from the appropriate places in the excel workbook", data_id=can_data_id),
+        DataSource(source_id="F3", source="Biofuels in Canada 2023", notes="Michael Wolinetz & Sam Harrison. (2023). Biofuels in Canada 2023: Tracking biofuel consumption, feedstocks and avoided greenhouse gas emissions. Navius Research.", data_id=can_data_id),
+        DataSource(source_id="F4", source="Government of Canada, Emission factors and reference values", notes="The appropriate emission factors for sector and fuel are converted to tonnes or ktonnes per PJ", data_id=can_data_id),
+        DataSource(source_id="F5", source="IPCC AR6", notes="Used for the GWP100 values for methane, carbon dioxide and nitrous oxide for calculating CO2eq", data_id=can_data_id),
+        DataSource(source_id="F6", source="NS Dept. of Environment & Climate Change", notes="QRV standards (wood/ethanol/biodiesel factors)", data_id=can_data_id),
+        DataSource(source_id="F7", source="Argonne National Laboratory, GREET model", notes="Upstream fuel emissions factors", data_id=can_data_id),
+    ]
+    cur.executemany(*DataSource.bulk_insert_or_ignore_sql(src_rows))
+
+    # SectorLabel — INSERT OR IGNORE; canoe-base is the long-term owner of this table
+    sector_rows = [
+        SectorLabel(sector="electricity", notes="Electric power sector"),
+        SectorLabel(sector="residential", notes="Residential sector"),
+        SectorLabel(sector="commercial", notes="Commercial sector"),
+        SectorLabel(sector="industrial", notes="Industrial sector"),
+        SectorLabel(sector="transportation", notes="Transportation sector"),
+        SectorLabel(sector="agriculture", notes="Agriculture sector"),
+        SectorLabel(sector="fuel", notes="Fuel production sector"),
+    ]
+    cur.executemany(*SectorLabel.bulk_insert_or_ignore_sql(sector_rows))
+
+    conn.commit()

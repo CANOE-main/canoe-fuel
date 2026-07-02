@@ -3,7 +3,7 @@
 
 # Path to the SQLite database created by canoe-base.
 # The module opens this DB and appends its own rows; it does not create the DB.
-db_dir: output/CAN_fuel.sqlite
+db_dir: output/canoe-fuel.new.sqlite
 
 # EIA AEO report year. Check the EIA website for the most recent available year.
 eia_year: 2025
@@ -27,7 +27,7 @@ future_periods:
 # namespacing only — it is not a row in the region table.
 province_list:
     - AB
-    - ON
+    - 'ON'
     - BC
     - MB
     - SK

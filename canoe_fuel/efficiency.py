@@ -1,17 +1,18 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Aug 20 10:08:08 2025
+"""Generate Efficiency and LifetimeTech rows from technology naming rules."""
+from __future__ import annotations
 
-@author: david
-"""
-"""Generate Efficiency rows from technology naming rules (unit efficiency)."""
-from typing import Dict, List
-import pandas as pd
-import numpy as np
+import sqlite3
+from typing import TYPE_CHECKING
 
-def build_mapping(tech_list: List[str]) -> Dict[str, Dict[str, str]]:
-    """Create input/output commodity mapping using name conventions."""
-    mapping: Dict[str, Dict[str, str]] = {}
+from canoe_schema.v4_0.models import Efficiency, LifetimeTech
+
+if TYPE_CHECKING:
+    from canoe_fuel.common import CANOEFuelConfig
+
+
+def build_mapping(tech_list: list[str]) -> dict[str, dict[str, str]]:
+    """Map each tech code to its input and output commodity using naming conventions."""
+    mapping: dict[str, dict[str, str]] = {}
     for tech in tech_list:
         parts = tech.split("_")
         if tech.startswith("F_IMP_"):
@@ -28,34 +29,57 @@ def build_mapping(tech_list: List[str]) -> Dict[str, Dict[str, str]]:
 
 
 def add_efficiency(
-    comb_dict: Dict[str, pd.DataFrame],
+    conn: sqlite3.Connection,
     *,
-    province_list: List[str],
-    periods: List[int],
-    dict_id: Dict[str, str],
-    tech_list: List[str],
-) -> Dict[str, pd.DataFrame]:
-    """Append Efficiency rows with value 1.0 for each tech/period/province."""
-    mapping = build_mapping(tech_list)
-    rows = []
-    for pro in province_list:
-        if pro == 'CAN':
+    tech_list: list[str],
+    mapping: dict[str, dict[str, str]],
+    cfg: "CANOEFuelConfig",
+) -> None:
+    """Write Efficiency (value=1.0) and LifetimeTech rows for all techs/regions/periods."""
+    cur = conn.cursor()
+
+    eff_rows: list[Efficiency] = []
+    for pro in cfg.province_list:
+        if pro == "CAN":
             continue
-        for vint in periods:
+        data_id = cfg.data_id(pro)
+        for vint in cfg.future_periods:
             for tech in tech_list:
-                i = mapping.get(tech, {}).get('input', '')
-                o = mapping.get(tech, {}).get('output', '')
-                rows.append([pro, i, tech, vint, o, 1.0, "Arbitrary value for transfer technology", np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, dict_id[pro]])
-    eff_df = pd.DataFrame(rows, columns=comb_dict['Efficiency'].columns)
-    if not eff_df.empty:
-        comb_dict['Efficiency'] = pd.concat([comb_dict['Efficiency'], eff_df], ignore_index=True)
-    rows = []
-    for pro in province_list:
-        if pro == 'CAN':
+                inp = mapping.get(tech, {}).get("input", "")
+                out = mapping.get(tech, {}).get("output", "")
+                eff_rows.append(
+                    Efficiency(
+                        region=pro,
+                        input_comm=inp,
+                        tech=tech,
+                        vintage=vint,
+                        output_comm=out,
+                        efficiency=1.0,
+                        notes="Arbitrary value for transfer technology",
+                        data_id=data_id,
+                    )
+                )
+
+    if eff_rows:
+        cur.executemany(*Efficiency.bulk_insert_or_ignore_sql(eff_rows, include_nulls=True))
+
+    life_rows: list[LifetimeTech] = []
+    for pro in cfg.province_list:
+        if pro == "CAN":
             continue
+        data_id = cfg.data_id(pro)
         for tech in tech_list:
-            rows.append([pro, tech, 5, 'An arbitrary lifetime so that it is renewed as often as it is needed', np.nan,np.nan,np.nan,np.nan,np.nan,np.nan, dict_id[pro]])
-    life_df = pd.DataFrame(rows, columns=comb_dict['LifetimeTech'].columns) 
-    if not eff_df.empty:
-        comb_dict['LifetimeTech'] = pd.concat([comb_dict['LifetimeTech'], life_df], ignore_index=True)
-    return comb_dict
+            life_rows.append(
+                LifetimeTech(
+                    region=pro,
+                    tech=tech,
+                    lifetime=5,
+                    notes="An arbitrary lifetime so that it is renewed as often as it is needed",
+                    data_id=data_id,
+                )
+            )
+
+    if life_rows:
+        cur.executemany(*LifetimeTech.bulk_insert_or_ignore_sql(life_rows, include_nulls=True))
+
+    conn.commit()

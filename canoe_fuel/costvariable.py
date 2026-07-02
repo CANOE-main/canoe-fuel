@@ -1,257 +1,193 @@
-# -*- coding: utf-8 -*-
-"""
-costvariable.py
+"""Build CostVariable rows for the fuel pipeline."""
+from __future__ import annotations
 
-Builds the CostVariable table for CANOE.
-"""
-from typing import Dict, List
-import pandas as pd
-import numpy as np
 import ast
+import sqlite3
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
-# ------------------------------
-# Internal helpers
-# ------------------------------
+import numpy as np
+import pandas as pd
+
+from canoe_schema.v4_0.models import CostVariable
+
+if TYPE_CHECKING:
+    from canoe_fuel.common import CANOEFuelConfig
+
+
 def _to_scalar(x):
-    """Return a clean scalar string/number from list-like or JSON-string cells."""
+    """Collapse list-like or JSON-string cells to a plain scalar."""
     if pd.isna(x):
-        return np.nan
-    # If it's a JSON-looking string like '["foo"]' or "['foo']"
-    if isinstance(x, str) and x.strip().startswith('[') and x.strip().endswith(']'):
+        return None
+    if isinstance(x, str) and x.strip().startswith("[") and x.strip().endswith("]"):
         try:
             parsed = ast.literal_eval(x.strip())
             if isinstance(parsed, Sequence) and not isinstance(parsed, (str, bytes)):
-                return parsed[0] if len(parsed) else np.nan
+                return parsed[0] if len(parsed) else None
         except Exception:
-            # fall through to bracket-strip as a last resort
             s = x.strip()[1:-1].strip()
-            return s.strip("'").strip('"') or np.nan
-    # If it's a real list/tuple/ndarray/Series, take the first element
+            return s.strip("'").strip('"') or None
     if isinstance(x, Sequence) and not isinstance(x, (str, bytes)):
-        return x[0] if len(x) else np.nan
+        return x[0] if len(x) else None
     return x
 
-def _safe_base_from_cost(cost_df: pd.DataFrame, period_val: int, tech_name: str, *, warn_label: str) -> float:
-    """Safely pull a base price from cost_df for (period, Tech Name).
-    Prints a lightweight warning if the lookup fails.
-    """
+
+def _safe_base(cost_df: pd.DataFrame, period_val: int, tech_name: str, *, warn_label: str) -> float:
     sel = cost_df.loc[
-        (cost_df['period'] == int(period_val)) & (cost_df['Tech Name'] == str(tech_name)),
-        'value'
+        (cost_df["period"] == int(period_val)) & (cost_df["Tech Name"] == str(tech_name)),
+        "value",
     ]
     if sel.empty:
-        print(f"[CostVariable] WARNING: No base price for '{tech_name}' in period {period_val} "
-              f"(needed by {warn_label}). Returning 0.")
+        print(
+            f"[CostVariable] WARNING: No base price for '{tech_name}' in period {period_val} "
+            f"(needed by {warn_label}). Returning 0."
+        )
         return 0.0
-    # squeeze can be deprecated; use iloc[0] for single match
     return float(sel.iloc[0])
 
 
-def _calc_value(
+def _calc_cost(
     tech: str,
     tech_name: str,
     period_val: int,
     *,
     cost_df: pd.DataFrame,
-    cfg: dict,
-    mmbtuconvertor: float,
-    currencyadjustment: float,
-    defl22: float,
-    defl25: float,
-    eth_price: float,
-    rdsl_price: float,
-    spk_price: float,
+    cfg: "CANOEFuelConfig",
 ) -> float:
-    """
-    Compute a price in model units (2020 M$/PJ) for a given tech & period.
-    This function centralizes all proxying and special-case logic.
-    """
+    """Return price in model units (2020 M$/PJ) for a given tech and EIA period year."""
+    inf = cfg.inflation
+    tname = tech_name.lower()
 
-    tname_lower = tech_name.lower()
+    if ("bio" in tname) or ("wood" in tname):
+        return ((cfg.b_price * inf.mmbtu_convertor) * inf.currency_adjustment) * inf.deflation_2022
 
-    # --- Config-based fuels ---
-    # Biomass / Wood from config['b_price']
-    if ('bio' in tname_lower) or ('wood' in tname_lower):
-        # Using 2022 deflator path (as in prior pipeline)
-        return ((cfg['b_price'] * mmbtuconvertor) * currencyadjustment) * defl22
+    if ("u_nat" in tname) or ("u_enr" in tname):
+        return ((cfg.u_price * inf.mmbtu_convertor) * inf.currency_adjustment) * inf.deflation_2022
 
-    # Uranium from config['u_price']
-    if ('u_nat' in tname_lower) or ('u_enr' in tname_lower):
-        return ((cfg['u_price'] * mmbtuconvertor) * currencyadjustment) * defl22
+    if "eth" in tname:
+        return inf.eth_price
+    if "rdsl" in tname:
+        return inf.rdsl_price
+    if "spk" in tname:
+        return inf.spk_price
 
-    # --- Fixed external prices (already in model units) ---
-    if 'eth' in tname_lower:
-        return float(eth_price)
-    if 'rdsl' in tname_lower:
-        return float(rdsl_price)
-    if 'spk' in tname_lower:
-        return float(spk_price)
+    if any(x in tname for x in ["lng", "cng", "ngl"]):
+        proxy = "T_ng" if any(x in tname for x in ["lng", "cng"]) else "I_prop"
+        base = _safe_base(cost_df, period_val, proxy, warn_label=f"{tech_name} (lng/cng/ngl proxy)")
+        return ((base * inf.mmbtu_convertor) * inf.currency_adjustment) * inf.deflation_2025 * 0.89
 
-    # --- Derived fuels (CNG/LNG/NGL/LPG etc.) ---
-    # Legacy behavior kept intact; only minor guard-rails added.
-    if any(x in tname_lower for x in ['lng', 'cng', 'ngl']):
-        # For LNG/CNG we proxy to transport NG; for NGL fall back to I_prop
-        proxy = 'T_ng' if any(x in tname_lower for x in ['lng', 'cng']) else 'I_prop'
-        base = _safe_base_from_cost(cost_df, period_val, proxy, warn_label=f"{tech_name} (lng/cng/ngl proxy)")
-        return ((base * mmbtuconvertor) * currencyadjustment) * defl25 * 0.89
+    if "lpg" in tname:
+        proxy = "R_prop" if tname == "f_r_lpg" else "T_prop"
+        base = _safe_base(cost_df, period_val, proxy, warn_label=f"{tech_name} (lpg proxy)")
+        return ((base * inf.mmbtu_convertor) * inf.currency_adjustment) * inf.deflation_2025
 
-    if 'lpg' in tname_lower:
-        # Residential LPG uses R_prop, otherwise T_prop
-        proxy = 'R_prop' if tname_lower == 'f_r_lpg' else 'T_prop'
-        base = _safe_base_from_cost(cost_df, period_val, proxy, warn_label=f"{tech_name} (lpg proxy)")
-        return ((base * mmbtuconvertor) * currencyadjustment) * defl25
+    if "e_coal" in tname:
+        base = _safe_base(cost_df, period_val, "I_coal", warn_label=f"{tech_name} (E_coal→I_coal)")
+        return ((base * inf.mmbtu_convertor) * inf.currency_adjustment) * inf.deflation_2025
 
-    # --- Electricity-side proxies (coal/gasoline/res oil/h2/coke) ---
-    if 'e_coal' in tname_lower:
-        base = _safe_base_from_cost(cost_df, period_val, 'I_coal', warn_label=f"{tech_name} (E_coal→I_coal)")
-        return ((base * mmbtuconvertor) * currencyadjustment) * defl25
+    if "e_gsl" in tname:
+        base = _safe_base(cost_df, period_val, "T_gsl", warn_label=f"{tech_name} (E_gsl→T_gsl)")
+        return ((base * inf.mmbtu_convertor) * inf.currency_adjustment) * inf.deflation_2025
 
-    if 'e_gsl' in tname_lower:
-        base = _safe_base_from_cost(cost_df, period_val, 'T_gsl', warn_label=f"{tech_name} (E_gsl→T_gsl)")
-        return ((base * mmbtuconvertor) * currencyadjustment) * defl25
+    if "r_oil" in tname:
+        base = _safe_base(cost_df, period_val, "C_oil", warn_label=f"{tech_name} (R_oil→C_oil)")
+        return ((base * inf.mmbtu_convertor) * inf.currency_adjustment) * inf.deflation_2025
 
-    if 'r_oil' in tname_lower:
-        base = _safe_base_from_cost(cost_df, period_val, 'C_oil', warn_label=f"{tech_name} (R_oil→C_oil)")
-        return ((base * mmbtuconvertor) * currencyadjustment) * defl25
+    if ("c_h2" in tname) or ("r_h2" in tname):
+        base = _safe_base(cost_df, period_val, "I_h2", warn_label=f"{tech_name} (H2→I_h2)")
+        return ((base * inf.mmbtu_convertor) * inf.currency_adjustment) * inf.deflation_2025
 
-    if ('c_h2' in tname_lower) or ('r_h2' in tname_lower):
-        base = _safe_base_from_cost(cost_df, period_val, 'I_h2', warn_label=f"{tech_name} (H2→I_h2)")
-        return ((base * mmbtuconvertor) * currencyadjustment) * defl25
+    if ("i_pcoke" in tname) or ("i_coke" in tname):
+        base = _safe_base(cost_df, period_val, "I_coal", warn_label=f"{tech_name} (coke→I_coal)")
+        return ((base * inf.mmbtu_convertor) * inf.currency_adjustment) * inf.deflation_2025
 
-    if ('i_pcoke' in tname_lower) or ('i_coke' in tname_lower):
-        base = _safe_base_from_cost(cost_df, period_val, 'I_coal', warn_label=f"{tech_name} (coke→I_coal)")
-        return ((base * mmbtuconvertor) * currencyadjustment) * defl25
+    if "a_gsl" in tname:
+        base = _safe_base(cost_df, period_val, "T_gsl", warn_label=f"{tech_name} (A_gsl→T_gsl)")
+        return ((base * inf.mmbtu_convertor) * inf.currency_adjustment) * inf.deflation_2025
 
-    # --- Agriculture proxies (NG/DSL/PROP + new GSL) ---
-    if 'a_gsl' in tname_lower:
-        # New: Agriculture gasoline -> transport gasoline
-        base = _safe_base_from_cost(cost_df, period_val, 'T_gsl', warn_label=f"{tech_name} (A_gsl→T_gsl)")
-        return ((base * mmbtuconvertor) * currencyadjustment) * defl25
+    if "a_ng" in tname:
+        base = _safe_base(cost_df, period_val, "I_ng", warn_label=f"{tech_name} (A_ng→I_ng)")
+        return ((base * inf.mmbtu_convertor) * inf.currency_adjustment) * inf.deflation_2025
 
-    if 'a_ng' in tname_lower:
-        base = _safe_base_from_cost(cost_df, period_val, 'I_ng', warn_label=f"{tech_name} (A_ng→I_ng)")
-        return ((base * mmbtuconvertor) * currencyadjustment) * defl25
+    if "a_dsl" in tname:
+        base = _safe_base(cost_df, period_val, "T_dsl", warn_label=f"{tech_name} (A_dsl→T_dsl)")
+        return ((base * inf.mmbtu_convertor) * inf.currency_adjustment) * inf.deflation_2025
 
-    if 'a_dsl' in tname_lower:
-        base = _safe_base_from_cost(cost_df, period_val, 'T_dsl', warn_label=f"{tech_name} (A_dsl→T_dsl)")
-        return ((base * mmbtuconvertor) * currencyadjustment) * defl25
+    if "a_prop" in tname:
+        base = _safe_base(cost_df, period_val, "T_prop", warn_label=f"{tech_name} (A_prop→T_prop)")
+        return ((base * inf.mmbtu_convertor) * inf.currency_adjustment) * inf.deflation_2025
 
-    if 'a_prop' in tname_lower:
-        base = _safe_base_from_cost(cost_df, period_val, 'T_prop', warn_label=f"{tech_name} (A_prop→T_prop)")
-        return ((base * mmbtuconvertor) * currencyadjustment) * defl25
+    if "mdo" in tname:
+        base = _safe_base(cost_df, period_val, "T_dsl", warn_label=f"{tech_name} (MDO→0.9*T_dsl)")
+        return ((base * inf.mmbtu_convertor) * inf.currency_adjustment) * inf.deflation_2025 * 0.9
 
-    # --- NEW: Marine diesel oil (MDO) ---
-    if 'mdo' in tname_lower:
-        # MDO is priced as 0.9 × transport diesel
-        base = _safe_base_from_cost(cost_df, period_val, 'T_dsl', warn_label=f"{tech_name} (MDO→0.9*T_dsl)")
-        return ((base * mmbtuconvertor) * currencyadjustment) * defl25 * 0.9
-
-    # --- Default: direct lookup from cost_df ---
-    base = _safe_base_from_cost(cost_df, period_val, tech_name, warn_label=f"{tech_name} (direct)")
-    return ((base * mmbtuconvertor) * currencyadjustment) * defl25
+    base = _safe_base(cost_df, period_val, tech_name, warn_label=f"{tech_name} (direct)")
+    return ((base * inf.mmbtu_convertor) * inf.currency_adjustment) * inf.deflation_2025
 
 
-# ------------------------------
-# Public API
-# ------------------------------
 def build_costvariable(
-    comb_dict: Dict[str, pd.DataFrame],
+    conn: sqlite3.Connection,
     *,
     cost_df: pd.DataFrame,
-    tech_list: List[str],
-    mapping: Dict[str, Dict[str, str]],
-    province_list: List[str],
-    periods: List[int],
-    dict_id: Dict[str, str],
-    factors: dict,
+    tech_list: list[str],
+    mapping: dict[str, dict[str, str]],
     fuel_df: pd.DataFrame,
-    cfg: dict,
-) -> Dict[str, pd.DataFrame]:
-    """
-    Append cost rows to comb_dict['CostVariable'] for each province, tech, vintage, and period.
+    cfg: "CANOEFuelConfig",
+) -> None:
+    """Write CostVariable rows for all regions, techs, and periods."""
+    cur = conn.cursor()
 
-    The output schema appended is expected to match the existing CostVariable table:
-        [region, period, tech, vintage, value, unit, notes, source,
-         dq_cred, dq_geo, dq_str, dq_tech, dq_time, data_id]
-    """
-    # Normalize types for cost_df
     cdf = cost_df.copy()
-    cdf['period'] = cdf['period'].astype(int)
-    cdf['Tech Name'] = cdf['Tech Name'].astype(str)
-    cdf['value'] = cdf['value'].astype(float)
-    # Period-end mapping: model_period → EIA year whose price is used.
-    # Falls back to the model period itself if the attribute is absent.
-    period_end_map: dict = cost_df.attrs.get('period_end_map', {})
+    cdf["period"] = cdf["period"].astype(int)
+    cdf["Tech Name"] = cdf["Tech Name"].astype(str)
+    cdf["value"] = cdf["value"].astype(float)
 
-    # Ensure required metadata columns exist on fuel_df
-    fuel_df = fuel_df.loc[:, ~fuel_df.columns.duplicated()].copy()
-    for col in ('Commodity', 'notes', 'source'):
-        if col not in fuel_df.columns:
-            fuel_df[col] = ""
+    # Period-end map: model_period → EIA year to use for pricing
+    period_end_map: dict = cost_df.attrs.get("period_end_map", {})
 
-    rows = []
-    for pro in province_list:
-        if pro == 'CAN':
+    rows: list[CostVariable] = []
+    for pro in cfg.province_list:
+        if pro == "CAN":
             continue
+        data_id = cfg.data_id(pro)
 
-        for vint in periods:
-                for tech in tech_list:
-                    # Skip imports/ELC/OTH if those are not meant to be priced here
-                    if any(x in tech for x in ['F_IMP', 'ELC', 'OTH']):
-                        continue
+        for vint in cfg.future_periods:
+            for tech in tech_list:
+                if any(x in tech for x in ["F_IMP", "ELC", "OTH"]):
+                    continue
 
-                    # Map to the "Tech Name" used in cost_df
-                    tech_name = mapping[tech]['output'].strip()
+                tech_name = mapping[tech]["output"].strip()
+                price_year = period_end_map.get(int(vint), int(vint))
+                cost = _calc_cost(tech, tech_name, price_year, cost_df=cdf, cfg=cfg)
 
-                    # Period-end perspective: look up price from the end of the
-                    # period (e.g. 2030 data for the 2025 model period).
-                    price_year = period_end_map.get(int(vint), int(vint))
+                # Notes and source from fuel_df (matched by Commodity column)
+                match = fuel_df.loc[fuel_df["Commodity"] == tech_name]
+                if not match.empty:
+                    notes = _to_scalar(match["notes"].iloc[0])
+                    data_source = _to_scalar(match["source"].iloc[0])
+                else:
+                    notes = None
+                    data_source = None
 
-                    # Compute value with all conversions/deflators applied
-                    val = _calc_value(
-                        tech,
-                        tech_name,
-                        price_year,
-                        cost_df=cdf,
-                        cfg=cfg,
-                        mmbtuconvertor=factors['mmbtuconvertor'],
-                        currencyadjustment=factors['currencyadjustment'],
-                        defl22=factors['deflation_2022'],
-                        defl25=factors['deflation_2025'],
-                        eth_price=factors['eth_price'],
-                        rdsl_price=factors['rdsl_price'],
-                        spk_price=factors['spk_price'],
+                rows.append(
+                    CostVariable(
+                        region=pro,
+                        period=int(vint),
+                        tech=tech,
+                        vintage=int(vint),
+                        cost=float(cost),
+                        units="2020 M$/PJ",
+                        notes=notes,
+                        data_source=data_source,
+                        dq_cred=2,
+                        dq_geog=3,
+                        dq_struc=2,
+                        dq_tech=1,
+                        dq_time=1,
+                        data_id=data_id,
                     )
-
-                    unit = "2020 M$/PJ"
-
-                    # Attach notes/source from fuel_df where available
-                    match = fuel_df.loc[fuel_df['Commodity'] == tech_name]
-                    if not match.empty:
-                        # guard for non-standard shapes
-                            notes = _to_scalar(match['notes'].iloc[0]) if 'notes' in match else np.nan
-                            ref   = _to_scalar(match['source'].iloc[0]) if 'source' in match else np.nan
-                    else:
-                        notes, ref =np.nan, np.nan
-
-                    # Data Quality default scores (tunable)
-                    dq_cred, dq_geo, dq_str, dq_tech, dq_time = 2, 3, 2, 1, 1
-
-                    rows.append([
-                        pro, int(vint), tech, int(vint), float(val), unit,
-                        notes, ref, dq_cred, dq_geo, dq_str, dq_tech, dq_time,
-                        dict_id[pro],
-                    ])
+                )
 
     if rows:
-        new_df = pd.DataFrame(
-            rows,
-            columns=comb_dict['CostVariable'].columns
-        )
-        comb_dict['CostVariable'] = pd.concat(
-            [comb_dict['CostVariable'], new_df],
-            ignore_index=True
-        )
-
-    return comb_dict
+        cur.executemany(*CostVariable.bulk_insert_or_ignore_sql(rows, include_nulls=True))
+    conn.commit()
