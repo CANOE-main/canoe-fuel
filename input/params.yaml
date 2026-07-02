@@ -21,7 +21,6 @@ future_periods:
     - 2035
     - 2040
     - 2045
-    - 2050
 
 # Provinces to produce data for. 'CAN' is a national aggregate used for data_id
 # namespacing only — it is not a row in the region table.
