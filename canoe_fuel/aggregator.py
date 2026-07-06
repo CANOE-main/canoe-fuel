@@ -22,8 +22,11 @@ logger = logging.getLogger(__name__)
 def run() -> None:
     cfg = CANOEFuelConfig.validate_from_yaml()
     db_path = Path(cfg.db_dir)
+    if not db_path.is_file():
+        raise FileNotFoundError(db_path)
 
-    with sqlite3.connect(db_path) as conn:
+    # with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(f"file:{db_path}?mode=rw", uri=True) as conn:
         validate_db_against_config(cfg, conn)
 
         # Acquire EIA data (from cache or API)

@@ -2,4 +2,5 @@
 __pycache__/
 output/*
 .vscode/
+.zed/
 uv.lock
