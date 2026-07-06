@@ -9,7 +9,7 @@ db_dir: output/canoe-fuel.new.sqlite
 eia_year: 2025
 
 # Version tag for this data run (numeric digits only, used in data_id namespacing).
-version: '001'
+version: '002'
 
 # Target schema version (must match the installed canoe-schema package).
 schema_version: '4.0'
