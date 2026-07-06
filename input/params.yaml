@@ -1,28 +1,75 @@
-#Write the version of the EIA AEO report you wish to use
-eia_year: 2025 #Check the EIA website and find the most reason year in the database, that is the value to use
+# canoe-fuel configuration
+# See common.py:CANOEFuelConfig for field documentation.
 
-#Version control: What version of the data are we using, we track numerically and they can be found in DataSet table
-version: '002' #Place within the quotation marks
+# Path to the SQLite database created by canoe-base.
+# The module opens this DB and appends its own rows; it does not create the DB.
+db_dir: output/canoe-fuel.new.sqlite
 
-#Choose the schema version you wish to use; the lower the number, the more simple the representation. Default is 3_1
-schema_version:
-  #- 0
-  #- 1
-  #- 2
-  #- 3
-  - 3_1
+# EIA AEO report year. Check the EIA website for the most recent available year.
+eia_year: 2025
 
-#periods to be studied
-periods:
-    #- 2021
+# Version tag for this data run (numeric digits only, used in data_id namespacing).
+version: '002'
+
+# Target schema version (must match the installed canoe-schema package).
+schema_version: '4.0'
+
+# Model periods to produce data for (future periods; flag='f' in time_period table).
+future_periods:
     - 2025
     - 2030
     - 2035
     - 2040
     - 2045
 
-#Price for uranium, look in the latest NREL ATB electricity report and find the Fuel cost in $/MMBtu
-u_price: 1.09 
+# Provinces to produce data for. 'CAN' is a national aggregate used for data_id
+# namespacing only — it is not a row in the region table.
+province_list:
+    - AB
+    - 'ON'
+    - BC
+    - MB
+    - SK
+    - QC
+    - NLLAB
+    - NS
+    - NB
+    - PEI
+    - CAN
 
-#Price for biopower, look in the latest NREL ATB electricity report and find the Fuel cost in $/MMBtu
+# Whether to raise an error or emit a warning when the DB is missing expected
+# periods or regions. Set to 'warning' for development; keep 'error' in production.
+validation_behavior: error
+
+# EIA series filter parameters (expose here so they are reviewable, not buried in code).
+eia_unit_filter: '2024 $/MMBtu'
+eia_exclude_pattern: 'average'
+
+# Fuel price for uranium. Source: NREL ATB electricity sector report.
+# Fuel cost in $/MMBtu; assumed constant across all periods.
+u_price: 1.09
+
+# Fuel price for biomass/wood. Source: NREL ATB electricity sector report.
+# Fuel cost in $/MMBtu; assumed constant across all periods.
 b_price: 5.449635
+
+# Currency and inflation adjustment factors (sub-model: InflationFactors).
+# These are documented constants — change only if the deflation base year changes.
+inflation:
+  # GDP deflator to convert 2022-dollar prices (NREL ATB) to real 2020 CAD.
+  deflation_2022: 0.861446913
+  # GDP deflator to convert 2024/2025-dollar prices (EIA AEO) to real 2020 CAD.
+  deflation_2025: 0.877689699
+  # USD to CAD exchange rate applied to all EIA/NREL prices.
+  currency_adjustment: 1.22
+  # 1 MMBtu = 1.055 GJ; used to convert $/MMBtu to $/GJ before PJ-scale adjustment.
+  mmbtu_convertor: 1.055
+  # Fixed 2020 M$/PJ price for ethanol.
+  # Source: Wolinetz & Harrison, Biofuels in Canada 2023 (avg 2012-2022, no projection).
+  eth_price: 25.801332399
+  # Fixed 2020 M$/PJ price for renewable diesel (50% biodiesel + 50% HDRD).
+  # Source: Wolinetz & Harrison, Biofuels in Canada 2023.
+  rdsl_price: 34.286607549
+  # Fixed 2020 M$/PJ price for synthetic jet fuel (SPK/HRJ pathway).
+  # Source: NREL ATB.
+  spk_price: 53.947379869
