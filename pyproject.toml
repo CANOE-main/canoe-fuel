@@ -12,7 +12,6 @@ requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.0",
     "pandas",
-    "pyyaml",
     "requests",
     "lxml",
     "canoe_schema @ git+https://github.com/CANOE-main/canoe-schema.git@e8bcbb5aad51bbe04fe0fbd74e02465af2bd3332"

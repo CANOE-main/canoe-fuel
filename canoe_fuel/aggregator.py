@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def run() -> None:
-    cfg = CANOEFuelConfig.validate_from_yaml()
+    cfg = CANOEFuelConfig.validate_from_toml()
     db_path = Path(cfg.db_dir)
     if not db_path.is_file():
         raise FileNotFoundError(db_path)
@@ -40,7 +40,7 @@ def run() -> None:
             logger.info("Fetched & cached EIA: %d rows", len(df_raw))
 
         # Build runtime frames
-        fuel_df = load_fuel_list()
+        fuel_df = load_fuel_list(cfg=cfg)
         fuel_list = fuel_df["Commodity"].tolist()
         cost_df = build_cost_frame(df_raw, cfg)
 
