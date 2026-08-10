@@ -1,12 +1,22 @@
 """Pydantic configuration model for the canoe-fuel pipeline."""
+
 from __future__ import annotations
-
+import tomllib
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Union
+from pydantic import BaseModel, ConfigDict, RootModel, field_validator, model_validator
 
-import yaml
-from pydantic import BaseModel, ConfigDict, model_validator
+# The two filter "variants"
+class BlanketFuelFilter(RootModel[str]):
+    def get_commodity(self) -> str:
+        return self.root
 
+class RegionPeriodFuelFilter(RootModel[tuple[str, str, float]]):
+    def get_commodity(self) -> str:
+        commodity, region, period = self.root
+        return f"{commodity}:{region}:{period}"
+
+FuelFilter = Union[BlanketFuelFilter, RegionPeriodFuelFilter]
 
 class InflationFactors(BaseModel):
     """Currency conversion and GDP deflation constants used in price calculations.
@@ -34,7 +44,7 @@ class CANOEFuelConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: str = "4.0"
-    db_dir: str
+    db_dir: Path
     eia_year: int
     version: str
     future_periods: list[int]
@@ -48,6 +58,9 @@ class CANOEFuelConfig(BaseModel):
     eia_unit_filter: str = "2024 $/MMBtu"
     eia_exclude_pattern: str = "average"
 
+    # Fuel list filtering (input/fuel_list.csv, 'Commodity' column)
+    exclude_fuels: list[FuelFilter] | None = None
+
     @model_validator(mode="after")
     def _check_version_format(self) -> "CANOEFuelConfig":
         if not self.version.isdigit():
@@ -55,22 +68,10 @@ class CANOEFuelConfig(BaseModel):
         return self
 
     @classmethod
-    def validate_from_yaml(cls, path: str | Path = "input/params.yaml") -> "CANOEFuelConfig":
-        """Load and validate config from a YAML file.
-
-        The YAML key 'periods' is accepted as an alias for 'future_periods' to
-        ease migration from the old params.yaml format.
-        """
-        with Path(path).open("r", encoding="utf-8") as fh:
-            raw = yaml.safe_load(fh)
-
-        # Accept legacy 'periods' key
-        if "periods" in raw and "future_periods" not in raw:
-            raw["future_periods"] = raw.pop("periods")
-
-        # schema_version in old yaml was a list; flatten to first element
-        if isinstance(raw.get("schema_version"), list):
-            raw["schema_version"] = str(raw["schema_version"][0]).replace("_", ".")
+    def validate_from_toml(cls, path: str | Path = "input/params.toml") -> "CANOEFuelConfig":
+        """Load and validate config from a TOML file."""
+        with Path(path).open("rb") as fh:
+            raw = tomllib.load(fh)
 
         # Inflate inflation sub-model from top-level keys if sub-dict absent
         if "inflation" not in raw:
@@ -89,3 +90,8 @@ class CANOEFuelConfig(BaseModel):
         if province == "CAN":
             return f"FUELHR{self.version}"
         return f"FUELHR{province}{self.version}"
+
+    @field_validator("db_dir")
+    @classmethod
+    def expand_path(cls, v: Path) -> Path:
+        return v.expanduser()

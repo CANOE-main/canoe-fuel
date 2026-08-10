@@ -1,6 +1,6 @@
 # Fuel Aggregator — Quick Start & README
 
-This README explains **what to edit in `params.yaml`** and **how to run** the `aggregator.py` orchestrator from the command line.
+This README explains **what to edit in `params.toml`** and **how to run** the `aggregator.py` orchestrator from the command line.
 For an overview of the technolgies and commodities for the fuel sector please go to [Fuel Sector](fuel.md) for information of the processing and data pipeline,[visit here]( https://canoe-main.github.io/canoe-fuel/)
 ---
 
@@ -8,7 +8,7 @@ For an overview of the technolgies and commodities for the fuel sector please go
 
 `aggregator.py` is an end‑to‑end orchestrator that:
 
-1. Loads your configuration from **`params.yaml`**.
+1. Loads your configuration from **`params.toml`**.
 2. Initializes the SQLite database and tables from your schema.
 3. Pulls fuel & price data:
    - Tries to load a cached EIA dataframe from `cache/dataframes.pkl`.
@@ -20,44 +20,45 @@ For an overview of the technolgies and commodities for the fuel sector please go
 
 ---
 
-## 2) What you need to edit in `params.yaml`
+## 2) What you need to edit in `params.toml`
 
-The aggregator expects a few configuration keys. If your `params.yaml` is missing any of these, add them. If you have additional keys used by your local modules, keep them as-is.
+The aggregator expects a few configuration keys. If your `params.toml` is missing any of these, add them. If you have additional keys used by your local modules, keep them as-is.
 
 Below is a **template** with the **minimum** and **commonly used** fields. Adjust values to match your local setup.
 
-```yaml
-# params.yaml (template)
+```toml
+# params.toml (template)
 
 # == General ==
-project_name: "CAN Fuel Aggregator"
-eia_year: 2024              # The EIA data vintage to use when fetching (int)
+project_name = "CAN Fuel Aggregator"
+eia_year = 2024              # The EIA data vintage to use when fetching (int)
 
 # == Database / Schema ==
-output_db: "output/CAN_fuel.sqlite"  # Where the final SQLite DB will be written
-schema_version: "3.1"                 # Used by your schema loader (if applicable)
-schema_file: "input/schema_3_1.sql"   # Absolute or relative path to your SQL schema
+output_db = "output/CAN_fuel.sqlite"  # Where the final SQLite DB will be written
+schema_version = "3.1"                # Used by your schema loader (if applicable)
+schema_file = "input/schema_3_1.sql"  # Absolute or relative path to your SQL schema
 
 # == Geography & Periods ==
 # Periods: list of model years; include at least one year you plan to compute.
-periods: [2025]                       # e.g., [2020, 2025, 2030]
+periods = [2025]                      # e.g., [2020, 2025, 2030]
 # Provinces/regions your pipeline expects. Include 'CAN' if your code uses it for national totals.
-provinces: ["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT", "CAN"]
+provinces = ["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT", "CAN"]
 
 # == Input / Output folders ==
-paths:
-  input_dir: "input"
-  output_dir: "output"
-  cache_dir: "cache"                  # where dataframes.pkl is stored/loaded
+[paths]
+input_dir = "input"
+output_dir = "output"
+cache_dir = "cache"                   # where dataframes.pkl is stored/loaded
 
 # == Optional knobs ==
 # If your local modules use any of these, expose them here so you can adjust without code changes.
-costs:
-  currency_base_year: 2024            # base year for currency normalization (if used)
-  deflator_target_year: 2025          # target year for deflation (if used)
-metadata:
-  author: "Your Name"
-  description: "Run produced by aggregator.py"
+[costs]
+currency_base_year = 2024             # base year for currency normalization (if used)
+deflator_target_year = 2025           # target year for deflation (if used)
+
+[metadata]
+author = "Your Name"
+description = "Run produced by aggregator.py"
 ```
 
 ### Field-by-field notes
@@ -69,7 +70,7 @@ metadata:
 - **`paths.cache_dir`**: The EIA cache is expected at `cache/dataframes.pkl`. You can change the folder here, but keep the filename the same unless you also change the code.
 - **Optional** blocks (`costs`, `metadata`): If your local modules read these, put the tunables here rather than in code.
 
-> If you maintain your own `params.yaml`, **do not remove** any project‑specific fields you already rely on—just add or update the keys above as needed.
+> If you maintain your own `params.toml`, **do not remove** any project‑specific fields you already rely on—just add or update the keys above as needed.
 
 ---
 
@@ -88,7 +89,7 @@ metadata:
    ```bash
    pip install -r requirements.txt
    ```
-   If you don’t have a `requirements.txt`, install your modules’ dependencies manually (e.g., `pandas`, `pyyaml`, etc.).
+   If you don’t have a `requirements.txt`, install your modules’ dependencies manually (e.g., `pandas`, `pydantic`, etc.).
 
 3. **Set your EIA API key** (only needed if the cache is missing or you want to force a fresh fetch):
    - Windows (PowerShell):
@@ -146,7 +147,7 @@ Edit `aggregator.py` to modify `logging.basicConfig(level=logging.INFO, ...)` if
 
 ## 7) Repo tips
 
-- Commit your `params.yaml` to version control (without secrets).
+- Commit your `params.toml` to version control (without secrets).
 - Keep `schema_*.sql` under `input/` and bump `schema_version` when you change it.
 - Use small test runs (single `period` and a subset of `provinces`) to iterate faster.
 
@@ -158,7 +159,7 @@ Edit `aggregator.py` to modify `logging.basicConfig(level=logging.INFO, ...)` if
 A: No. The script will skip the API call if `cache/dataframes.pkl` exists.
 
 **Q: Where is the DB written?**  
-A: Wherever `output_db` points to in `params.yaml` (default shown above is `output/CAN_fuel.sqlite`).
+A: Wherever `output_db` points to in `params.toml` (default shown above is `output/CAN_fuel.sqlite`).
 
-**Q: Can I place `params.yaml` somewhere else?**  
+**Q: Can I place `params.toml` somewhere else?**  
 A: Yes, if your `setup.load_config()` supports a custom path. Otherwise, keep it at the repo root or where your modules expect it.

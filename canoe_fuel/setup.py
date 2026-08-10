@@ -11,18 +11,44 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from canoe_fuel.common import BlanketFuelFilter
+
 if TYPE_CHECKING:
     from canoe_fuel.common import CANOEFuelConfig
 
 logger = logging.getLogger(__name__)
 
 
-def load_fuel_list(path: str | Path = "input/fuel_list.csv") -> pd.DataFrame:
+def load_fuel_list(
+    path: str | Path = "input/fuel_list.csv", *, cfg: "CANOEFuelConfig | None" = None
+) -> pd.DataFrame:
     """Return the commodity/fuel mapping table from CSV.
 
     Columns: Commodity, Fuel_type, Fuel_name, fuel_price_label, notes, source
+
+    If `cfg` is given and sets `include_fuels` or `exclude_fuels`, the table is
+    filtered accordingly (see `filter_fuel_list`).
     """
-    return pd.read_csv(path)
+    df = pd.read_csv(path)
+    if cfg is not None:
+        df = filter_fuel_list(df, cfg)
+    return df
+
+
+def filter_fuel_list(df: pd.DataFrame, cfg: "CANOEFuelConfig") -> pd.DataFrame:
+    """Restrict the fuel list to drop `cfg.exclude_fuels`.
+
+    Codes are matched against the 'Commodity' column; unknown codes are treated as a
+    configuration error since they most likely indicate a typo.
+    """
+    known = set(df["Commodity"])
+    exclude_commodities = [f.get_commodity() for f in cfg.exclude_fuels if isinstance(f, BlanketFuelFilter)] if cfg.exclude_fuels is not None else []
+    if cfg.exclude_fuels is not None:
+        unknown = set(exclude_commodities) - known
+        if unknown:
+            raise ValueError(f"exclude_fuels contains unknown Commodity codes: {sorted(unknown)}")
+        return df[~df["Commodity"].isin(exclude_commodities)].reset_index(drop=True)
+    return df
 
 
 def build_cost_frame(df_raw: pd.DataFrame, cfg: "CANOEFuelConfig") -> pd.DataFrame:
