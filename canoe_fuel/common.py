@@ -4,7 +4,7 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 from typing import Literal, Union
-from pydantic import BaseModel, ConfigDict, RootModel, model_validator
+from pydantic import BaseModel, ConfigDict, RootModel, field_validator, model_validator
 
 # The two filter "variants"
 class BlanketFuelFilter(RootModel[str]):
@@ -44,7 +44,7 @@ class CANOEFuelConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: str = "4.0"
-    db_dir: str
+    db_dir: Path
     eia_year: int
     version: str
     future_periods: list[int]
@@ -90,3 +90,8 @@ class CANOEFuelConfig(BaseModel):
         if province == "CAN":
             return f"FUELHR{self.version}"
         return f"FUELHR{province}{self.version}"
+
+    @field_validator("db_dir")
+    @classmethod
+    def expand_path(cls, v: Path) -> Path:
+        return v.expanduser()
