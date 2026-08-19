@@ -10,23 +10,19 @@ E_u_enr,u_enr,enriched uranium,u,"Taken from NREL ATB, it is assumed to be a con
 E_gsl,gsl,gasoline,gsl,Taken from EIA AEO 2025 and converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020,F1
 R_oil,oil,oil,oil,Taken from EIA AEO 2025 and converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020,F1
 R_ng,ng,natural gas,ng,Taken from EIA AEO 2025 and converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020,F1
-R_elc,elc,electricity,na,na,
 R_lpg,lpg,liquefied petroleum gas (LPG) (primarily propane),prop,"Taken from EIA AEO 2025 and converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020, uised the value for propane",F1
 R_wood,wood,wood,bio,"Taken from NREL ATB, it is assumed to be a constant value for every period, converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020",F2
 C_oil,oil,oil,oil,Taken from EIA AEO 2025 and converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020,F1
 C_ng,ng,natural gas,ng,Taken from EIA AEO 2025 and converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020,F1
-C_elc,elc,electricity,na,na,
 C_bio,bio,bioenergy,bio,"Taken from NREL ATB, it is assumed to be a constant value for every period, converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020",F2
 C_h2,h2,hydrogen,h2,Taken from EIA AEO 2025 and converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020,F1
 I_bio,bio, bioenergy,bio,"Taken from NREL ATB, it is assumed to be a constant value for every period, converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020",F2
-I_elc,elc,electricity,na,na,
 I_h2,h2,hydrogen,h2,Taken from EIA AEO 2025 and converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020,F1
 I_ng,ng,natural gas,ng,Taken from EIA AEO 2025 and converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020,F1
 I_hfo,hfo,heavy fuel oil,hfo,Taken from EIA AEO 2025 and converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020,F1
 R_bio,bio,bioenergy,bio,"Taken from NREL ATB, it is assumed to be a constant value for every period, converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020",F2
 R_h2,h2,hydrogen,h2,Taken from EIA AEO 2025 and converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020,F1
 T_bio,bio, bioenergy,bio,"Taken from NREL ATB, it is assumed to be a constant value for every period, converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020",F2
-T_elc,elc,electricity,na,na,
 T_h2,h2,hydrogen,h2,Taken from EIA AEO 2025 and converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020,F1
 T_ng,ng,natural gas,ng,Taken from EIA AEO 2025 and converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020,F1
 T_hfo,hfo,heavy fuel oil,,Taken from EIA AEO 2025 and converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020,F1
@@ -47,10 +43,9 @@ T_jtf,jtf,jet fuel,jtf,Taken from EIA AEO 2025 and converted from $/MMBtu to M$/
 T_spk,spk,synthetic jet fuel,spk,"Taken from NREL ATB, it is assumed to be a constant value for every period, converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020",F2
 T_mdo,mdo,marine diesel oil,dsl,Taken from EIA AEO 2025 and converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020 and assumed to 12% lower value than diesel,F1
 T_lng,lng,liquefied natural gas,ng,"Taken from EIA AEO 2025 and converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020, used the value for natural gas",F1
-E_elc_dem,elc_dem,electricity (distributed generation),na,na,
 F_ethos,ethos,Ethos (supply point),na,na,
 A_ng,ng,natural gas,ng,Taken from EIA AEO 2025 and converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020,F1
-A_elc,elc,electricity,na,na,na
 A_dsl,dsl,diesel,dsl,Taken from EIA AEO 2025 and converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020,F1
 A_prop,prop,propane,prop,Taken from EIA AEO 2025 and converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020,F1
 A_gsl,gsl,gasoline,gsl,Taken from EIA AEO 2025 and converted from $/MMBtu to M$/PJ and GDP deflator for inflation 2022 to 2020,F1
+T_h2_700,h2,hydrogen,h2,Taken from EIA AEO 2025 and uses the same fuel cost as T_h2,F1

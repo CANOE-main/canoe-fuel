@@ -10,21 +10,47 @@ if TYPE_CHECKING:
     from canoe_fuel.common import CANOEFuelConfig
 
 
-def build_mapping(tech_list: list[str]) -> dict[str, dict[str, str]]:
-    """Map each tech code to its input and output commodity using naming conventions."""
+def build_mapping(
+    tech_list: list[str],
+) -> dict[str, dict[str, str]]:
+    """Map technology codes to input/output commodities."""
+
     mapping: dict[str, dict[str, str]] = {}
+
     for tech in tech_list:
         parts = tech.split("_")
+
         if tech.startswith("F_IMP_"):
             fuel = "_".join(parts[2:]).lower()
-            mapping[tech] = {"input": "F_ethos", "output": f"F_{fuel}"}
+
+            mapping[tech] = {
+                "input": "F_ethos",
+                "output": f"F_{fuel}",
+            }
+
+        elif tech == "F_T_H2_700":
+            mapping[tech] = {
+                "input": "F_h2",
+                "output": "T_h2_700",
+            }
+
         elif tech.startswith("E_"):
             sector = parts[1].upper()
-            mapping[tech] = {"input": "E_elc_dem", "output": f"{sector}_elc"}
+
+            mapping[tech] = {
+                "input": "E_elc_dem",
+                "output": f"{sector}_elc",
+            }
+
         elif tech.startswith("F_"):
             sector = parts[1].upper()
             fuel = "_".join(parts[2:]).lower()
-            mapping[tech] = {"input": f"F_{fuel}", "output": f"{sector}_{fuel}"}
+
+            mapping[tech] = {
+                "input": f"F_{fuel}",
+                "output": f"{sector}_{fuel}",
+            }
+
     return mapping
 
 

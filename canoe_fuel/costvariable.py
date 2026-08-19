@@ -134,7 +134,7 @@ def build_costvariable(
     fuel_df: pd.DataFrame,
     cfg: "CANOEFuelConfig",
 ) -> None:
-    """Write CostVariable rows for all regions, techs, and periods."""
+    """Write split supply and distribution CostVariable rows."""
     cur = conn.cursor()
 
     cdf = cost_df.copy()
@@ -142,52 +142,198 @@ def build_costvariable(
     cdf["Tech Name"] = cdf["Tech Name"].astype(str)
     cdf["value"] = cdf["value"].astype(float)
 
-    # Period-end map: model_period → EIA year to use for pricing
     period_end_map: dict = cost_df.attrs.get("period_end_map", {})
 
     rows: list[CostVariable] = []
+
+    def get_metadata(commodity: str):
+        # H2_700 inherits the H2 metadata
+        lookup_commodity = (
+            "T_h2"
+            if commodity == "T_h2_700"
+            else commodity
+        )
+
+        match = fuel_df.loc[
+            fuel_df["Commodity"] == lookup_commodity
+        ]
+
+        if match.empty:
+            return None, None
+
+        return (
+            _to_scalar(match["notes"].iloc[0]),
+            _to_scalar(match["source"].iloc[0]),
+        )
+
+    def add_row(
+        *,
+        region: str,
+        period: int,
+        tech: str,
+        cost: float,
+        notes,
+        data_source,
+        data_id: str,
+    ):
+        rows.append(
+            CostVariable(
+                region=region,
+                period=period,
+                tech=tech,
+                vintage=period,
+                cost=float(cost),
+                units="2020 M$/PJ",
+                notes=notes,
+                data_source=data_source,
+                dq_cred=2,
+                dq_geog=3,
+                dq_struc=2,
+                dq_tech=1,
+                dq_time=1,
+                data_id=data_id,
+            )
+        )
+
     for pro in cfg.province_list:
         if pro == "CAN":
             continue
+
         data_id = cfg.data_id(pro)
 
         for vint in cfg.future_periods:
+            price_year = period_end_map.get(int(vint), int(vint))
+
+            # ------------------------------------------------------------
+            # Step 1:
+            # Calculate the original/full delivered cost of each
+            # distribution technology.
+            # ------------------------------------------------------------
+            full_costs: dict[str, float] = {}
+
             for tech in tech_list:
-                if any(x in tech for x in ["F_IMP", "ELC", "OTH"]):
+
+                if tech.startswith("F_IMP_"):
                     continue
 
-                tech_name = mapping[tech]["output"].strip()
-                price_year = period_end_map.get(int(vint), int(vint))
-                cost = _calc_cost(tech, tech_name, price_year, cost_df=cdf, cfg=cfg)
+                if "ELC" in tech or "OTH" in tech:
+                    continue
 
-                # Notes and source from fuel_df (matched by Commodity column)
-                match = fuel_df.loc[fuel_df["Commodity"] == tech_name]
-                if not match.empty:
-                    notes = _to_scalar(match["notes"].iloc[0])
-                    data_source = _to_scalar(match["source"].iloc[0])
+                if tech not in mapping:
+                    continue
+
+                # F_T_H2_700 must have exactly the same delivered
+                # price as F_T_H2.
+                if tech == "F_T_H2_700":
+                    reference_tech = "F_T_H2"
+                    reference_output = mapping[reference_tech]["output"]
+
+                    cost = _calc_cost(
+                        reference_tech,
+                        reference_output,
+                        price_year,
+                        cost_df=cdf,
+                        cfg=cfg,
+                    )
+
                 else:
-                    notes = None
-                    data_source = None
+                    tech_name = mapping[tech]["output"].strip()
 
-                rows.append(
-                    CostVariable(
+                    cost = _calc_cost(
+                        tech,
+                        tech_name,
+                        price_year,
+                        cost_df=cdf,
+                        cfg=cfg,
+                    )
+
+                full_costs[tech] = cost
+
+            # ------------------------------------------------------------
+            # Step 2:
+            # Group distribution technologies according to their
+            # upstream F_<fuel> commodity.
+            #
+            # Example:
+            # F_I_NG -> F_ng
+            # F_R_NG -> F_ng
+            # F_T_NG -> F_ng
+            # ------------------------------------------------------------
+            fuel_groups: dict[str, list[str]] = {}
+
+            for tech in full_costs:
+                input_comm = mapping[tech]["input"]
+
+                if not input_comm.startswith("F_"):
+                    continue
+
+                fuel_groups.setdefault(input_comm, []).append(tech)
+
+            # ------------------------------------------------------------
+            # Step 3:
+            # Lowest delivered price becomes supply/import cost.
+            # Remaining difference becomes distribution cost.
+            # ------------------------------------------------------------
+            for input_comm, distribution_techs in fuel_groups.items():
+
+                supply_source_tech = min(
+                    distribution_techs,
+                    key=lambda t: full_costs[t],
+                )
+
+                supply_cost = full_costs[supply_source_tech]
+
+                fuel_code = input_comm.removeprefix("F_").upper()
+                import_tech = f"F_IMP_{fuel_code}"
+
+                # Metadata comes from the technology which established
+                # the minimum/base fuel price.
+                supply_output = mapping[supply_source_tech]["output"]
+                supply_notes, supply_source = get_metadata(supply_output)
+
+                # Write F_IMP_<fuel> supply cost.
+                if import_tech in tech_list:
+                    add_row(
+                        region=pro,
+                        period=int(vint),
+                        tech=import_tech,
+                        cost=supply_cost,
+                        notes=(
+                            f"Fuel supply component based on minimum "
+                            f"delivered cost for {input_comm}. "
+                            f"Reference technology: {supply_source_tech}."
+                        ),
+                        data_source=supply_source,
+                        data_id=data_id,
+                    )
+
+                # Write residual distribution costs.
+                for tech in distribution_techs:
+
+                    distribution_cost = max(
+                        0.0,
+                        full_costs[tech] - supply_cost,
+                    )
+
+                    output_comm = mapping[tech]["output"]
+                    notes, data_source = get_metadata(output_comm)
+
+                    add_row(
                         region=pro,
                         period=int(vint),
                         tech=tech,
-                        vintage=int(vint),
-                        cost=float(cost),
-                        units="2020 M$/PJ",
+                        cost=distribution_cost,
                         notes=notes,
                         data_source=data_source,
-                        dq_cred=2,
-                        dq_geog=3,
-                        dq_struc=2,
-                        dq_tech=1,
-                        dq_time=1,
                         data_id=data_id,
                     )
-                )
 
     if rows:
-        cur.executemany(*CostVariable.bulk_insert_or_ignore_sql(rows, include_nulls=True))
+        cur.executemany(
+            *CostVariable.bulk_insert_or_ignore_sql(
+                rows,
+                include_nulls=True,
+            )
+        )
+
     conn.commit()

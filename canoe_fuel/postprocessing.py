@@ -39,7 +39,8 @@ def add_metadata(conn: sqlite3.Connection, *, cfg: "CANOEFuelConfig") -> None:
         DataSource(source_id="F4", source="Government of Canada, Emission factors and reference values", notes="The appropriate emission factors for sector and fuel are converted to tonnes or ktonnes per PJ", data_id=can_data_id),
         DataSource(source_id="F5", source="IPCC AR6", notes="Used for the GWP100 values for methane, carbon dioxide and nitrous oxide for calculating CO2eq", data_id=can_data_id),
         DataSource(source_id="F6", source="NS Dept. of Environment & Climate Change", notes="QRV standards (wood/ethanol/biodiesel factors)", data_id=can_data_id),
-        DataSource(source_id="F7", source="Argonne National Laboratory, GREET model", notes="Upstream fuel emissions factors", data_id=can_data_id),
+        DataSource(source_id="F7", source="Environment and Climate Change Canada. (2024). Fuel life cycle assessment model user manual (June 2024). Government of Canada.", notes="Upstream fuel emissions factors", data_id=can_data_id),
+        DataSource(source_id="F8", source="Argonne National Laboratory, GREET model", notes="Upstream fuel emissions factors", data_id=can_data_id),
     ]
     cur.executemany(*DataSource.bulk_insert_or_ignore_sql(src_rows))
 
